@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Elang Laut — Archipelago Flight</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a1a26;
+    font-family: "Segoe UI", system-ui, sans-serif; color: #dfeee2; }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hidden { display: none !important; }
+
+  /* ---- HUD ---- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+  .panel { position: absolute; background: rgba(6, 20, 28, 0.72); border: 1px solid rgba(125, 255, 158, 0.35);
+    border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(2px); }
+  .label { font-size: 10px; letter-spacing: 2px; color: #8fd6a8; }
+  .big { font-size: 34px; font-weight: 700; line-height: 1; color: #eafff0; font-variant-numeric: tabular-nums; }
+  .unit { font-size: 12px; color: #8fd6a8; margin-left: 4px; }
+  .sub { font-size: 13px; color: #cfe8d8; font-variant-numeric: tabular-nums; }
+
+  #hud-speed-box { left: 18px; bottom: 18px; min-width: 150px; }
+  #hud-alt-box { right: 18px; bottom: 18px; min-width: 150px; text-align: right; }
+  #hud-vsi { color: #ffd27d; }
+
+  #hud-heading { left: 50%; top: 14px; transform: translateX(-50%); width: 320px; text-align: center;
+    padding: 6px 0 8px; overflow: hidden; }
+  #hud-hdg { font-size: 22px; font-weight: 700; color: #eafff0; letter-spacing: 1px; }
+  #hud-tape-wrap { position: relative; height: 22px; overflow: hidden; margin-top: 2px; }
+  #hud-tape { position: absolute; top: 0; height: 22px; width: 3600px; }
+  .tape-tick { position: absolute; top: 0; width: 1px; height: 7px; background: rgba(223, 238, 226, 0.7); }
+  .tape-tick.major { height: 12px; background: #eafff0; }
+  .tape-label { position: absolute; top: 10px; font-size: 10px; color: #cfe8d8; transform: translateX(-50%); }
+  #hud-heading::after { content: ""; position: absolute; left: 50%; top: 34px; width: 2px; height: 12px;
+    background: #ffb347; transform: translateX(-50%); }
+
+  #hud-horizon-box { left: 50%; bottom: 14px; transform: translateX(-50%); width: 224px; height: 136px;
+    padding: 0; overflow: hidden; border-radius: 50%; border: 2px solid rgba(125, 255, 158, 0.5); }
+  #hud-horizon { width: 220px; height: 132px; display: block; }
+
+  #hud-gauges { left: 18px; top: 16px; width: 210px; }
+  .gauge-row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
+  .gauge-row .label { width: 64px; flex: none; }
+  .bar { flex: 1; height: 12px; background: rgba(255, 255, 255, 0.12); border-radius: 6px; overflow: hidden; }
+  .bar > div { height: 100%; border-radius: 6px; }
+  #hud-thr-fill { width: 0%; background: #7dff9e; }
+  #hud-fuel-fill { width: 100%; background: #ffb347; }
+  #hud-fuel-fill.low { background: #ff5a4e; }
+  #hud-dmg-fill { width: 0%; background: #ff5a4e; }
+  .gauge-val { width: 40px; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
+  #hud-thr-box { left: 18px; top: 190px; width: 210px; }
+
+  #hud-mission { right: 18px; top: 16px; width: 250px; text-align: right; }
+  #hud-rings { font-size: 24px; font-weight: 700; color: #ffb347; }
+  #hud-ring-dist { font-size: 13px; color: #cfe8d8; margin-top: 2px; }
+  #hud-time, #hud-score { font-size: 15px; font-variant-numeric: tabular-nums; }
+  #hud-phase { margin-top: 6px; font-size: 12px; color: #8fd6a8; letter-spacing: 1px; }
+
+  #hud-minimap-box { right: 18px; top: 190px; width: 196px; height: 196px; padding: 6px; }
+  #hud-minimap { width: 180px; height: 180px; display: block; border-radius: 6px; }
+
+  #hud-message { position: absolute; left: 50%; top: 250px; transform: translateX(-50%);
+    background: rgba(6, 20, 28, 0.85); border: 1px solid #ffb347; color: #ffe1a8;
+    padding: 10px 22px; border-radius: 8px; font-size: 17px; font-weight: 600; letter-spacing: 0.5px;
+    opacity: 0; transition: opacity 0.25s; white-space: nowrap; }
+  #hud-message.show { opacity: 1; }
+  #hud-warning { position: absolute; left: 50%; top: 296px; transform: translateX(-50%);
+    color: #ff5a4e; font-size: 20px; font-weight: 800; letter-spacing: 2px;
+    text-shadow: 0 0 12px rgba(255, 90, 78, 0.8); opacity: 0; }
+  #hud-warning.show { opacity: 1; animation: blink 0.5s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+  #hud-fps { display: none; }
+
+  /* ---- Screens ---- */
+  .screen { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, rgba(6, 22, 34, 0.55), rgba(6, 22, 34, 0.82)); }
+  .card { max-width: 640px; width: calc(100% - 40px); text-align: center; padding: 34px 30px;
+    background: rgba(6, 20, 28, 0.88); border: 1px solid rgba(125, 255, 158, 0.4); border-radius: 16px; }
+  .card h1 { font-size: 52px; letter-spacing: 4px; color: #eafff0; }
+  .card h1 span { color: #ffb347; }
+  .card h2 { font-size: 15px; font-weight: 400; letter-spacing: 3px; color: #8fd6a8; margin: 6px 0 18px; }
+  .card p { font-size: 15px; line-height: 1.6; color: #cfe8d8; }
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; text-align: left;
+    margin: 20px auto 6px; max-width: 480px; font-size: 14px; }
+  .controls b { color: #ffb347; font-weight: 700; }
+  .controls div { padding: 3px 0; }
+  button { pointer-events: auto; margin-top: 22px; padding: 14px 42px; font-size: 19px; font-weight: 700;
+    letter-spacing: 2px; color: #08241a; background: #7dff9e; border: none; border-radius: 10px; cursor: pointer; }
+  button:hover { background: #a5ffc0; }
+  .note { margin-top: 16px; font-size: 12px; color: #8fae9c; }
+  #result-score { font-size: 58px; font-weight: 800; color: #ffb347; line-height: 1.1; }
+  #result-detail { margin-top: 8px; }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="hud">
+  <div class="panel" id="hud-speed-box">
+    <div class="label">AIRSPEED</div>
+    <div><span class="big" id="hud-speed">000</span><span class="unit">KT</span></div>
+    <div class="sub">Throttle <span id="hud-thr-text">0%</span></div>
+  </div>
+  <div class="panel" id="hud-alt-box">
+    <div class="label">ALTITUDE</div>
+    <div><span class="big" id="hud-alt">00000</span><span class="unit">FT</span></div>
+    <div class="sub">VSI <span id="hud-vsi">+0</span> FT/MIN</div>
+  </div>
+
+  <div class="panel" id="hud-heading">
+    <div id="hud-hdg">090° E</div>
+    <div id="hud-tape-wrap"><div id="hud-tape"></div></div>
+  </div>
+
+  <div class="panel" id="hud-horizon-box"><canvas id="hud-horizon" width="220" height="132"></canvas></div>
+
+  <div class="panel" id="hud-gauges">
+    <div class="gauge-row"><span class="label">FUEL</span><div class="bar"><div id="hud-fuel-fill"></div></div><span class="gauge-val" id="hud-fuel-text">100%</span></div>
+    <div class="gauge-row"><span class="label">DAMAGE</span><div class="bar"><div id="hud-dmg-fill"></div></div><span class="gauge-val" id="hud-dmg-text"></span></div>
+  </div>
+  <div class="panel" id="hud-thr-box">
+    <div class="label">THROTTLE</div>
+    <div class="bar" style="height:14px; margin-top:6px;"><div id="hud-thr-fill"></div></div>
+  </div>
+
+  <div class="panel" id="hud-mission">
+    <div id="hud-rings">RING 0 / 5</div>
+    <div id="hud-ring-dist">PULAU TIMUR · 0 m</div>
+    <div style="margin-top:6px;">TIME <span id="hud-time">00:00</span> &nbsp;·&nbsp; SCORE <span id="hud-score">00000</span></div>
+    <div id="hud-phase">TAKE-OFF</div>
+  </div>
+  <div class="panel" id="hud-minimap-box"><canvas id="hud-minimap" width="180" height="180"></canvas></div>
+
+  <div id="hud-message"></div>
+  <div id="hud-warning"></div>
+  <div id="hud-fps">60 FPS</div>
+  <span id="hud-speed-unit" style="display:none"></span>
+</div>
+
+<div class="screen" id="title-screen">
+  <div class="card">
+    <h1>ELANG <span>LAUT</span></h1>
+    <h2>ARCHIPELAGO FLIGHT · KEPULAUAN NUSANTARA</h2>
+    <p>An original archipelago flight game: take off from runway 09, thread five
+    glowing rings over the islands, and bring her home for a gentle landing.
+    Mind your fuel — and mind the ground.</p>
+    <div class="controls">
+      <div><b>W / S</b> — throttle up / down</div>
+      <div><b>↑ / ↓</b> — pitch (tarik / tekan)</div>
+      <div><b>← / →</b> — roll / banking</div>
+      <div><b>A / D</b> — rudder (yaw)</div>
+      <div><b>Mouse drag</b> — glance around</div>
+      <div><b>Wheel</b> — trim throttle</div>
+      <div><b>G</b> — landing gear</div>
+      <div><b>C</b> — chase / cockpit camera</div>
+      <div><b>P</b> — pause &nbsp;·&nbsp; <b>R</b> — restart</div>
+      <div><b>M</b> — mute &nbsp;·&nbsp; <b>Space</b> — brake</div>
+    </div>
+    <button id="fly-button">TERBANG</button>
+    <div class="note">Desktop keyboard + mouse · works fully offline · Elang Laut is an original game</div>
+  </div>
+</div>
+
+<div class="screen hidden" id="results-screen">
+  <div class="card">
+    <h1 id="result-title" style="font-size:34px;">MISI SELESAI</h1>
+    <div style="margin-top:14px;"><span class="label">SKOR AKHIR</span></div>
+    <div id="result-score">0</div>
+    <p id="result-detail"></p>
+    <button id="again-button">TERBANG LAGI</button>
+  </div>
+</div>
+
+<div class="screen hidden" id="pause-screen">
+  <div class="card">
+    <h1 style="font-size:34px;">JEDA</h1>
+    <p>Tekan P untuk lanjut, atau R untuk mulai dari awal.</p>
+    <button id="resume-button">LANJUT</button>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
